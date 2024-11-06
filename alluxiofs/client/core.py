@@ -23,6 +23,7 @@ import humanfriendly
 import requests
 from requests.adapters import HTTPAdapter
 
+from .segment import SegmentRanges
 from .utils import set_log_level
 
 try:
@@ -793,6 +794,19 @@ class AlluxioClient:
             raise Exception(
                 f"Error when getting load job progress for {load_url}: error {e}"
             ) from e
+
+    def _page_generator_on_segmented_file(self, file_path, start, end, segment_size):
+        # todo Lack of validity check
+        segment_range_list = SegmentRanges(file_path, segment_size, start, end)
+        for i in range(segment_range_list.size()):
+            segment_range = segment_range_list.get(i)
+            segment_path = segment_range.get_path()
+            self._validate_path(segment_path)
+            worker_host, worker_http_port = self._get_preferred_worker_address(
+                segment_path
+            )
+            segment_path_id = self._get_path_hash(segment_path)
+            yield from self._all_page_generator(worker_host, worker_http_port, segment_path_id, segment_path)
 
     def _read_page(
         self,
